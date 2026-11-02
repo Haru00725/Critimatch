@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum FacilityType {
+  HOSPITAL
+  BLOOD_BANK
+  PHARMACY
+  NGO
+}
+enum Category {
+  BLOOD
+  OXYGEN
+  ICU_BED
+  VENTILATOR
+}
+enum ReqStatus {
+  PENDING
+  OFFERED
+  CONFIRMED
+  ESCALATED
+  CANCELLED
+}
+enum MatchStatus {
+  OFFERED
+  CONFIRMED
+  DECLINED
+  EXPIRED
+}
+enum Role {
+  FACILITY
+  ADMIN
+}
+
+model Facility {
+  id        String          @id @default(cuid())
+  name      String
+  type      FacilityType
+  area      String
+  lat       Float
+  lng       Float
+  phone     String
+  verified  Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  inventory InventoryItem[]
+  users     User[]
+  matches   RequestMatch[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         Role
+  facilityId   String?
+  facility     Facility? @relation(fields: [facilityId], references: [id])
+}
+
+model InventoryItem {
+  id         String   @id @default(cuid())
+  facilityId String
+  category   Category
+  subtype    String
+  quantity   Int
+  updatedAt  DateTime @updatedAt
+  facility   Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@unique([facilityId, category, subtype])
+}
+
+model Request {
+  id            String         @id @default(cuid())
+  trackingToken String         @unique
+  rawText       String
+  category      Category
+  subtype       String
+  quantity      Int
+  lat           Float
+  lng           Float
+  contactPhone  String
+  llmUrgency    Int?
+  keywordScore  Int            @default(0)
+  urgencyScore  Int
+  confidence    Float?
+  status        ReqStatus      @default(PENDING)
+  radiusKm      Int
+  deadlineAt    DateTime
+  escalatedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  matches       RequestMatch[]
+  alerts        AdminAlert[]
+
+  @@index([status, deadlineAt])
+}
+
+model RequestMatch {
+  id             String      @id @default(cuid())
+  requestId      String
+  facilityId     String
+  status         MatchStatus @default(OFFERED)
+  distanceKm     Float
+  offerExpiresAt DateTime
+  createdAt      DateTime    @default(now())
+  request        Request     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  facility       Facility    @relation(fields: [facilityId], references: [id])
+
+  @@index([facilityId, status])
+  @@index([requestId])
+}
+
+model AdminAlert {
+  id        String   @id @default(cuid())
+  requestId String
+  message   String
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
